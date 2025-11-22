@@ -80,11 +80,60 @@ BEGIN
     END;
 END;
 $$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION update_good_sum_mart()
+RETURNS TRIGGER AS $$
+DECLARE
+    v_good_name  varchar(63);
+    v_good_price numeric(12, 2);
+BEGIN
+    -- Обработка убытия (DELETE или старое состояние при UPDATE)
+    IF (TG_OP = 'DELETE' OR TG_OP = 'UPDATE') THEN
+        
+        -- Получаем имя и цену товара по OLD.good_id
+        SELECT good_name, good_price INTO v_good_name, v_good_price
+        FROM goods
+        WHERE goods_id = OLD.good_id;
+
+        -- Если товар найден (теоретически может быть удален из goods, но FK не даст), вычитаем сумму из витрины
+        IF v_good_name IS NOT NULL THEN
+            UPDATE good_sum_mart
+            SET sum_sale = sum_sale - (OLD.sales_qty * v_good_price)
+            WHERE good_name = v_good_name;
+        END IF;
+        
+    END IF;
+
+    -- Обработка прибытия (INSERT или новое состояние при UPDATE)
+    IF (TG_OP = 'INSERT' OR TG_OP = 'UPDATE') THEN
+        
+        -- Получаем имя и цену товара по NEW.good_id
+        SELECT good_name, good_price INTO v_good_name, v_good_price
+        FROM goods
+        WHERE goods_id = NEW.good_id;
+
+        -- Пытаемся обновить существующую запись в витрине (прибавить сумму)
+        UPDATE good_sum_mart
+        SET sum_sale = sum_sale + (NEW.sales_qty * v_good_price)
+        WHERE good_name = v_good_name;
+
+        -- Если запись не найдена (UPDATE вернул 0 строк) — значит, товара в витрине еще нет.
+        -- Вставляем новую запись.
+        IF NOT FOUND THEN
+            INSERT INTO good_sum_mart (good_name, sum_sale)
+            VALUES (v_good_name, (NEW.sales_qty * v_good_price));
+        END IF;
+        
+    END IF;
+
+    RETURN NULL; -- Для AFTER-триггера возвращаемое значение игнорируется
+END;
+$$ LANGUAGE plpgsql;
 ```
 
 ## Создаю новый триггер. 
 ```sql
-CREATE TRIGGER sales_mart_trigger
+CREATE OR REPLACE TRIGGER sales_mart_trigger
     AFTER INSERT OR UPDATE OR DELETE ON sales
     FOR EACH ROW
     EXECUTE FUNCTION update_good_sum_mart();
@@ -131,3 +180,7 @@ SELECT * FROM good_sum_mart; -- Должна уменьшиться сумма
  Спички хозайственные     |        72.50
 (2 строки)
 ```
+
+## Задание со звёздочкой. 
+
+Если мы используем отчет "по требованию", то любое изменение цены товара в таблице `goods` (инфляция, скидки) мгновенно искажает прошлые финансовые показатели, так как база пересчитывает старые продажи по новой текущей цене. Схема "Витрина + Триггер" работает по фиксации факта сделки. Мы положили сумму в витрину в момент продажи по старой цене. Даже если цена в `goods` потом изменится, в витрине останется та сумма, которую мы реально заработали.
