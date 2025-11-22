@@ -262,3 +262,34 @@ ALTER TABLE bookings_partitioned ADD PRIMARY KEY (book_ref, book_date);
 -- Индекс для ускорения поиска по дате
 CREATE INDEX ON bookings_partitioned (book_date);
 ```
+## Миграция данных.
+```sql
+INSERT INTO bookings_partitioned 
+SELECT * FROM bookings;
+INSERT 0 593433
+```
+Проверяю распределение данных по секциям:
+```sql
+  partition_name  | record_count
+------------------+--------------
+ bookings_2017_04 |         4569
+ bookings_2017_05 |       163531
+ bookings_2017_06 |       165150
+ bookings_2017_07 |       171760
+ bookings_2017_08 |        88423
+(5 строк)
+```
+Сравниваю с оригинальной таблицей:
+```
+SELECT COUNT(*) FROM bookings;
+ count
+--------
+ 593433
+(1 строка)
+
+SELECT COUNT(*) FROM bookings_partitioned;
+ count
+--------
+ 593433
+(1 строка)
+```
