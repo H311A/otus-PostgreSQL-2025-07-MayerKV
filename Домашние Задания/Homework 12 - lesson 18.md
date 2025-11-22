@@ -53,37 +53,6 @@ GROUP BY G.good_name;
 CREATE OR REPLACE FUNCTION update_good_sum_mart()
 RETURNS TRIGGER AS $$
 DECLARE
-    changed_good_id INTEGER;
-BEGIN
-    -- Определяем ID товара, который изменился
-    IF TG_OP = 'DELETE' THEN
-        changed_good_id := OLD.good_id;
-    ELSE
-        changed_good_id := NEW.good_id;
-    END IF;
-    
-    -- Удаляем старую запись этого товара из витрины
-    DELETE FROM good_sum_mart 
-    WHERE good_name = (SELECT good_name FROM goods WHERE goods_id = changed_good_id);
-    
-    -- Пересчитываем и вставляем новые данные для этого товара
-    INSERT INTO good_sum_mart (good_name, sum_sale)
-    SELECT G.good_name, SUM(G.good_price * S.sales_qty)
-    FROM goods G
-    INNER JOIN sales S ON S.good_id = G.goods_id
-    WHERE G.goods_id = changed_good_id
-    GROUP BY G.good_name;
-    
-    RETURN CASE 
-        WHEN TG_OP = 'DELETE' THEN OLD 
-        ELSE NEW 
-    END;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE OR REPLACE FUNCTION update_good_sum_mart()
-RETURNS TRIGGER AS $$
-DECLARE
     v_good_name  varchar(63);
     v_good_price numeric(12, 2);
 BEGIN
