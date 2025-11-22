@@ -4,7 +4,7 @@
 # Триггеры, поддержка заполнения витрин.  
   
 ## Создаю структуру базы данных:
-```
+```sql
 DROP SCHEMA IF EXISTS pract_functions CASCADE;
 CREATE SCHEMA pract_functions;
 
