@@ -113,7 +113,7 @@ demo=# \d bookings
     TABLE "tickets" CONSTRAINT "tickets_book_ref_fkey" FOREIGN KEY (book_ref) REFERENCES bookings(book_ref)
 ```
 8. Структура таблицы `flights`:
-```
+```sql
 demo=# \d flights
                                                       Таблица "bookings.flights"
        Столбец       |           Тип            | Правило сортировки | Допустимость NULL |                По умолчанию
@@ -144,7 +144,7 @@ demo=# \d flights
 ```
 
 ### Проверяю объём данных в основных таблицах:
-```
+```sql
 SELECT 'bookings' as table_name, COUNT(*) as record_count FROM bookings
 UNION ALL SELECT 'tickets', COUNT(*) FROM tickets
 UNION ALL SELECT 'flights', COUNT(*) FROM flights  
@@ -161,7 +161,7 @@ UNION ALL SELECT 'boarding_passes', COUNT(*) FROM boarding_passes;
 (5 строк)
 ```
 ### Смотрю диапазон дат в основных таблицах:
-```
+```sql
 SELECT 
     'bookings' as table, 
     MIN(book_date) as min_date, 
@@ -201,3 +201,64 @@ FROM flights;
 `ticket_flights` - может быть секционирована по связи с рейсами через `flight_id`.  
 
 Таблица `bookings` выбрана для секционирования, так как cодержит исторические данные с четкой временной привязкой, имеет значительный объем данных. Для данной таблицы наиболее подходящим является секционирование по диапазону на основе поля `book_date`, поскольку это позволяет эффективно управлять историческими данными и оптимизировать запросы, фильтруемые по временным периодам. В реальных сценариях часто требуются отчеты за определенные периоды, а так же временные диапазоны хорошо определяются и не пересекаются.
+
+## Секционирование таблицы. 
+Теперь анализирую распределение данных по месяцам, чтобы определить границы для секций: 
+```sql
+SELECT 
+    EXTRACT(YEAR FROM book_date) as year,
+    EXTRACT(MONTH FROM book_date) as month,
+    COUNT(*) as records,
+    MIN(book_date) as first_booking,
+    MAX(book_date) as last_booking
+FROM bookings 
+GROUP BY year, month
+ORDER BY year, month;
+
+ year | month | records |     first_booking      |      last_booking
+------+-------+---------+------------------------+------------------------
+ 2017 |     4 |    4569 | 2017-04-21 14:23:00+03 | 2017-04-30 23:58:00+03
+ 2017 |     5 |  163531 | 2017-05-01 00:01:00+03 | 2017-05-31 23:59:00+03
+ 2017 |     6 |  165150 | 2017-06-01 00:00:00+03 | 2017-06-30 23:59:00+03
+ 2017 |     7 |  171760 | 2017-07-01 00:00:00+03 | 2017-07-31 23:59:00+03
+ 2017 |     8 |   88423 | 2017-08-01 00:00:00+03 | 2017-08-15 18:00:00+03
+(5 строк)
+```
+### Создаю новую секционированную таблицу:
+```sql
+CREATE TABLE bookings_partitioned (
+    book_ref character(6) NOT NULL,
+    book_date timestamp with time zone NOT NULL,
+    total_amount numeric(10,2) NOT NULL
+) PARTITION BY RANGE (book_date);
+```
+### Создаю секции для каждого месяца:
+```sql
+-- Секция для апреля 2017
+CREATE TABLE bookings_2017_04 PARTITION OF bookings_partitioned
+    FOR VALUES FROM ('2017-04-01') TO ('2017-05-01');
+
+-- Секция для мая 2017
+CREATE TABLE bookings_2017_05 PARTITION OF bookings_partitioned
+    FOR VALUES FROM ('2017-05-01') TO ('2017-06-01');
+
+-- Секция для июня 2017
+CREATE TABLE bookings_2017_06 PARTITION OF bookings_partitioned
+    FOR VALUES FROM ('2017-06-01') TO ('2017-07-01');
+
+-- Секция для июля 2017
+CREATE TABLE bookings_2017_07 PARTITION OF bookings_partitioned
+    FOR VALUES FROM ('2017-07-01') TO ('2017-08-01');
+
+-- Секция для августа 2017
+CREATE TABLE bookings_2017_08 PARTITION OF bookings_partitioned
+    FOR VALUES FROM ('2017-08-01') TO ('2017-09-01');
+```
+### Создаю индексы, аналогичные оригинальной таблице:
+```sql
+-- Первичный ключ
+ALTER TABLE bookings_partitioned ADD PRIMARY KEY (book_ref, book_date);
+
+-- Индекс для ускорения поиска по дате
+CREATE INDEX ON bookings_partitioned (book_date);
+```
