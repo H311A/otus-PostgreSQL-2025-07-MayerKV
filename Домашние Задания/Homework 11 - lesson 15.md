@@ -98,3 +98,47 @@ demo=# \d aircrafts
  model         | text         |                    |                   |
  range         | integer      |                    |                   |
 ```
+7. Структура таблицы `bookings`:
+```sql
+demo=# \d bookings
+                                   Таблица "bookings.bookings"
+   Столбец    |           Тип            | Правило сортировки | Допустимость NULL | По умолчанию
+--------------+--------------------------+--------------------+-------------------+--------------
+ book_ref     | character(6)             |                    | not null          |
+ book_date    | timestamp with time zone |                    | not null          |
+ total_amount | numeric(10,2)            |                    | not null          |
+Индексы:
+    "bookings_pkey" PRIMARY KEY, btree (book_ref)
+Ссылки извне:
+    TABLE "tickets" CONSTRAINT "tickets_book_ref_fkey" FOREIGN KEY (book_ref) REFERENCES bookings(book_ref)
+```
+8. Структура таблицы `flights`:
+```
+demo=# \d flights
+                                                      Таблица "bookings.flights"
+       Столбец       |           Тип            | Правило сортировки | Допустимость NULL |                По умолчанию
+---------------------+--------------------------+--------------------+-------------------+--------------------------------------------
+ flight_id           | integer                  |                    | not null          | nextval('flights_flight_id_seq'::regclass)
+ flight_no           | character(6)             |                    | not null          |
+ scheduled_departure | timestamp with time zone |                    | not null          |
+ scheduled_arrival   | timestamp with time zone |                    | not null          |
+ departure_airport   | character(3)             |                    | not null          |
+ arrival_airport     | character(3)             |                    | not null          |
+ status              | character varying(20)    |                    | not null          |
+ aircraft_code       | character(3)             |                    | not null          |
+ actual_departure    | timestamp with time zone |                    |                   |
+ actual_arrival      | timestamp with time zone |                    |                   |
+Индексы:
+    "flights_pkey" PRIMARY KEY, btree (flight_id)
+    "flights_flight_no_scheduled_departure_key" UNIQUE CONSTRAINT, btree (flight_no, scheduled_departure)
+Ограничения-проверки:
+    "flights_check" CHECK (scheduled_arrival > scheduled_departure)
+    "flights_check1" CHECK (actual_arrival IS NULL OR actual_departure IS NOT NULL AND actual_arrival IS NOT NULL AND actual_arrival > actual_departure)
+    "flights_status_check" CHECK (status::text = ANY (ARRAY['On Time'::character varying::text, 'Delayed'::character varying::text, 'Departed'::character varying::text, 'Arrived'::character varying::text, 'Scheduled'::character varying::text, 'Cancelled'::character varying::text]))
+Ограничения внешнего ключа:
+    "flights_aircraft_code_fkey" FOREIGN KEY (aircraft_code) REFERENCES aircrafts_data(aircraft_code)
+    "flights_arrival_airport_fkey" FOREIGN KEY (arrival_airport) REFERENCES airports_data(airport_code)
+    "flights_departure_airport_fkey" FOREIGN KEY (departure_airport) REFERENCES airports_data(airport_code)
+Ссылки извне:
+    TABLE "ticket_flights" CONSTRAINT "ticket_flights_flight_id_fkey" FOREIGN KEY (flight_id) REFERENCES flights(flight_id)
+```
