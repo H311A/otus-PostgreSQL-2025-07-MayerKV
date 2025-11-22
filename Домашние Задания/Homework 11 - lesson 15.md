@@ -373,6 +373,15 @@ ORDER BY month;
 (27 строк)
 
 -- В секционированной таблице
+
+EXPLAIN (ANALYZE, BUFFERS)
+SELECT 
+    EXTRACT(MONTH FROM book_date) as month,
+    COUNT(*) as bookings_count,
+    SUM(total_amount) as total_revenue
+FROM bookings_partitioned
+GROUP BY EXTRACT(MONTH FROM book_date)
+ORDER BY month;
                                                                                       QUERY PLAN
 
 -------------------------------------------------------------------------------------------------------------------------------------------------------
@@ -418,4 +427,55 @@ ORDER BY month;
  Planning Time: 0.304 ms
  Execution Time: 163.948 ms
 (35 строк)
+```
+### Тестирую операции вставки, обновления и удаления.
+1. Вставка:
+```sql
+-- Вставляю тестовую запись
+INSERT INTO bookings_partitioned 
+VALUES ('999999', '2017-06-15 12:00:00+03', 50000.00);
+INSERT 0 1
+
+-- Проверяю, в какую секцию попала запись
+SELECT tableoid::regclass as partition_name 
+FROM bookings_partitioned 
+WHERE book_ref = '999999';
+
+  partition_name
+------------------
+ bookings_2017_06
+(1 строка)
+```
+2. Обновление:
+```sql
+-- Меняю дату так, чтобы запись переместилась в другую секцию
+UPDATE bookings_partitioned 
+SET book_date = '2017-07-15 12:00:00+03' 
+WHERE book_ref = '999999';
+UPDATE 1
+
+-- Проверяю новую секцию
+SELECT tableoid::regclass as partition_name 
+FROM bookings_partitioned 
+WHERE book_ref = '999999';
+
+  partition_name
+------------------
+ bookings_2017_07
+(1 строка)
+```
+3. Удаление:
+```sql
+-- Удаляю тестовую запись
+DELETE FROM bookings_partitioned 
+WHERE book_ref = '999999';
+DELETE 1
+
+-- Проверяю, что удалилась
+SELECT COUNT(*) FROM bookings_partitioned WHERE book_ref = '999999';
+
+ count
+-------
+     0
+(1 строка)
 ```
