@@ -142,3 +142,62 @@ demo=# \d flights
 Ссылки извне:
     TABLE "ticket_flights" CONSTRAINT "ticket_flights_flight_id_fkey" FOREIGN KEY (flight_id) REFERENCES flights(flight_id)
 ```
+
+### Проверяю объём данных в основных таблицах:
+```
+SELECT 'bookings' as table_name, COUNT(*) as record_count FROM bookings
+UNION ALL SELECT 'tickets', COUNT(*) FROM tickets
+UNION ALL SELECT 'flights', COUNT(*) FROM flights  
+UNION ALL SELECT 'ticket_flights', COUNT(*) FROM ticket_flights
+UNION ALL SELECT 'boarding_passes', COUNT(*) FROM boarding_passes;
+
+   table_name    | record_count
+-----------------+--------------
+ flights         |        65664
+ bookings        |       593433
+ tickets         |       829071
+ boarding_passes |      1894295
+ ticket_flights  |      2360335
+(5 строк)
+```
+### Смотрю диапазон дат в основных таблицах:
+```
+SELECT 
+    'bookings' as table, 
+    MIN(book_date) as min_date, 
+    MAX(book_date) as max_date 
+FROM bookings
+UNION ALL
+SELECT 
+    'flights', 
+    MIN(scheduled_departure), 
+    MAX(scheduled_departure) 
+FROM flights;
+
+  table   |        min_date        |        max_date
+----------+------------------------+------------------------
+ bookings | 2017-04-21 14:23:00+03 | 2017-08-15 18:00:00+03
+ flights  | 2017-05-17 02:00:00+03 | 2017-09-14 20:55:00+03
+(2 строки)
+```
+
+В результате анализа схемы базы данных были изучены следующие таблицы:
+`bookings` (593,433 записей) - содержит данные о бронированиях с полем book_date (временная метка);
+`flights` (65,664 записей) - содержит информацию о рейсах с полями scheduled_departure и scheduled_arrival;
+`tickets` (829,071 записей) - данные о пассажирах и билетах;
+`ticket_flights` (2,360,335 записей) - связующая таблица между билетами и рейсами;
+`boarding_passes` (1,894,295 записей) - посадочные талоны;
+`seats` - конфигурация мест в самолетах;
+`airports` - справочник аэропортов;
+`aircrafts` - справочник самолетов.
+
+Временные диапазоны данных:
+Бронирования: с 21.04.2017 по 15.08.2017 (4 месяца).
+Рейсы: с 17.05.2017 по 14.09.2017 (4 месяца).
+
+Кандидаты для секционирования:
+`bookings` - идеальный кандидат для секционирования по диапазону на основе поля `book_date`.
+`flights` - подходит для секционирования по `scheduled_departure`.
+`ticket_flights` - может быть секционирована по связи с рейсами через `flight_id`.
+
+Таблица `bookings` выбрана для секционирования, так как cодержит исторические данные с четкой временной привязкой, имеет значительный объем данных. В реальных сценариях часто требуются отчеты за определенные периоды, а так же временные диапазоны хорошо определяются и не пересекаются.
