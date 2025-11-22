@@ -179,7 +179,7 @@ SELECT * FROM good_sum_mart;
  Спички хозайственные |     5.00
 (1 строка)
 
-Отчёт
+-- Отчёт
 SELECT G.good_name, sum(G.good_price * S.sales_qty)
 FROM goods G
 INNER JOIN sales S ON S.good_id = G.goods_id
