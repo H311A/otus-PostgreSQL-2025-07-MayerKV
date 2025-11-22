@@ -228,42 +228,43 @@ ORDER BY year, month;
 ```sql
 CREATE TABLE bookings_partitioned (
     book_ref character(6) NOT NULL,
-    book_date timestamp with time zone NOT NULL,
+    book_date timestamp with time zone NOT NULL, -- поле для секционирования по диапазону
     total_amount numeric(10,2) NOT NULL
 ) PARTITION BY RANGE (book_date);
 ```
 ### Создаю секции для каждого месяца:
 ```sql
--- Секция для апреля 2017
+-- Секция для апреля 2017: данные с 1 апреля по 1 мая 2017
 CREATE TABLE bookings_2017_04 PARTITION OF bookings_partitioned
     FOR VALUES FROM ('2017-04-01') TO ('2017-05-01');
 
--- Секция для мая 2017
+-- Секция для мая 2017: данные с 1 мая по 1 июня 2017
 CREATE TABLE bookings_2017_05 PARTITION OF bookings_partitioned
     FOR VALUES FROM ('2017-05-01') TO ('2017-06-01');
 
--- Секция для июня 2017
+-- Секция для июня 2017: данные с 1 июня по 1 июля 2017
 CREATE TABLE bookings_2017_06 PARTITION OF bookings_partitioned
     FOR VALUES FROM ('2017-06-01') TO ('2017-07-01');
 
--- Секция для июля 2017
+-- Секция для июля 2017: данные с 1 июля по 1 августа 2017
 CREATE TABLE bookings_2017_07 PARTITION OF bookings_partitioned
     FOR VALUES FROM ('2017-07-01') TO ('2017-08-01');
 
--- Секция для августа 2017
+-- Секция для августа 2017: данные с 1 августа по 1 сентября 2017
 CREATE TABLE bookings_2017_08 PARTITION OF bookings_partitioned
     FOR VALUES FROM ('2017-08-01') TO ('2017-09-01');
 ```
 ### Создаю индексы, аналогичные оригинальной таблице:
 ```sql
--- Первичный ключ
+-- Составной первичный ключ включает book_ref и book_date для обеспечения уникальности в пределах секций
 ALTER TABLE bookings_partitioned ADD PRIMARY KEY (book_ref, book_date);
 
--- Индекс для ускорения поиска по дате
+-- Индекс на поле book_date для ускорения поиска и фильтрации по дате
 CREATE INDEX ON bookings_partitioned (book_date);
 ```
 ## Миграция данных.
 ```sql
+-- Перенос всех данных из оригинальной таблицы в секционированную структуру
 INSERT INTO bookings_partitioned 
 SELECT * FROM bookings;
 INSERT 0 593433
@@ -279,7 +280,7 @@ INSERT 0 593433
  bookings_2017_08 |        88423
 (5 строк)
 ```
-Сравниваю с оригинальной таблицей:
+Сравниваю общее количество записей до и после миграции:
 ```sql
 SELECT COUNT(*) FROM bookings;
  count
@@ -294,9 +295,9 @@ SELECT COUNT(*) FROM bookings_partitioned;
 (1 строка)
 ```
 ## Оптимизация запросов и тестирование.
-1. Запрос за конкретный месяц:
+1. Запрос за конкретный месяц, проверяю использование partition pruning:
 ```sql
--- В оригинальной таблице
+-- В оригинальной таблице полное сканирование всех данных
 EXPLAIN (ANALYZE, BUFFERS) 
 SELECT * FROM bookings 
 WHERE book_date >= '2017-06-01' AND book_date < '2017-07-01';
@@ -313,7 +314,7 @@ WHERE book_date >= '2017-06-01' AND book_date < '2017-07-01';
  Execution Time: 50.564 ms
 (8 строк)
 
--- В секционированной таблице
+-- В секционированной таблице сканирование только одной секции
 EXPLAIN (ANALYZE, BUFFERS) 
 SELECT * FROM bookings_partitioned 
 WHERE book_date >= '2017-06-01' AND book_date < '2017-07-01';
@@ -331,7 +332,7 @@ WHERE book_date >= '2017-06-01' AND book_date < '2017-07-01';
 ```
 2. Агрегирующий запрос по месяцам.
 ```sql
--- В оригинальной таблице
+-- В оригинальной таблице сортировка на диске
 EXPLAIN (ANALYZE, BUFFERS)
 SELECT 
     EXTRACT(MONTH FROM book_date) as month,
@@ -372,7 +373,7 @@ ORDER BY month;
  Execution Time: 291.145 ms
 (27 строк)
 
--- В секционированной таблице
+-- В секционированной таблице параллельное сканирование секций и сортировка в памяти
 
 EXPLAIN (ANALYZE, BUFFERS)
 SELECT 
