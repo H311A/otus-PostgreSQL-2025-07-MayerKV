@@ -280,7 +280,7 @@ INSERT 0 593433
 (5 строк)
 ```
 Сравниваю с оригинальной таблицей:
-```
+```sql
 SELECT COUNT(*) FROM bookings;
  count
 --------
@@ -292,4 +292,130 @@ SELECT COUNT(*) FROM bookings_partitioned;
 --------
  593433
 (1 строка)
+```
+## Оптимизация запросов и тестирование.
+1. Запрос за конкретный месяц:
+```sql
+-- В оригинальной таблице
+EXPLAIN (ANALYZE, BUFFERS) 
+SELECT * FROM bookings 
+WHERE book_date >= '2017-06-01' AND book_date < '2017-07-01';
+
+                                                                     QUERY PLAN
+----------------------------------------------------------------------------------------------------------------------------------------------------
+ Seq Scan on bookings  (cost=0.00..12725.49 rows=167389 width=21) (actual time=0.010..45.256 rows=165150 loops=1)
+   Filter: ((book_date >= '2017-06-01 00:00:00+03'::timestamp with time zone) AND (book_date < '2017-07-01 00:00:00+03'::timestamp with time zone))
+   Rows Removed by Filter: 428283
+   Buffers: shared hit=3824
+ Planning:
+   Buffers: shared hit=3
+ Planning Time: 0.074 ms
+ Execution Time: 50.564 ms
+(8 строк)
+
+-- В секционированной таблице
+EXPLAIN (ANALYZE, BUFFERS) 
+SELECT * FROM bookings_partitioned 
+WHERE book_date >= '2017-06-01' AND book_date < '2017-07-01';
+
+                                                                     QUERY PLAN
+----------------------------------------------------------------------------------------------------------------------------------------------------
+ Seq Scan on bookings_2017_06 bookings_partitioned  (cost=0.00..3529.25 rows=165150 width=21) (actual time=0.008..15.157 rows=165150 loops=1)
+   Filter: ((book_date >= '2017-06-01 00:00:00+03'::timestamp with time zone) AND (book_date < '2017-07-01 00:00:00+03'::timestamp with time zone))
+   Buffers: shared hit=1052
+ Planning:
+   Buffers: shared hit=26
+ Planning Time: 0.313 ms
+ Execution Time: 20.425 ms
+(7 строк)
+```
+2. Агрегирующий запрос по месяцам.
+```sql
+-- В оригинальной таблице
+EXPLAIN (ANALYZE, BUFFERS)
+SELECT 
+    EXTRACT(MONTH FROM book_date) as month,
+    COUNT(*) as bookings_count,
+    SUM(total_amount) as total_revenue
+FROM bookings
+GROUP BY EXTRACT(MONTH FROM book_date)
+ORDER BY month;
+
+                                                                    QUERY PLAN
+--------------------------------------------------------------------------------------------------------------------------------------------------
+ Finalize GroupAggregate  (cost=36826.35..73557.31 rows=121981 width=72) (actual time=222.765..290.239 rows=5 loops=1)
+   Group Key: (EXTRACT(month FROM book_date))
+   Buffers: shared hit=3936, temp read=1595 written=1601
+   I/O Timings: temp read=4.403 write=16.838
+   ->  Gather Merge  (cost=36826.35..69287.97 rows=243962 width=72) (actual time=197.132..290.184 rows=15 loops=1)
+         Workers Planned: 2
+         Workers Launched: 2
+         Buffers: shared hit=3936, temp read=1595 written=1601
+         I/O Timings: temp read=4.403 write=16.838
+         ->  Partial GroupAggregate  (cost=35826.33..40128.68 rows=121981 width=72) (actual time=144.684..204.957 rows=5 loops=3)
+               Group Key: (EXTRACT(month FROM book_date))
+               Buffers: shared hit=3936, temp read=1595 written=1601
+               I/O Timings: temp read=4.403 write=16.838
+               ->  Sort  (cost=35826.33..36444.49 rows=247264 width=38) (actual time=144.195..173.948 rows=197811 loops=3)
+                     Sort Key: (EXTRACT(month FROM book_date))
+                     Sort Method: external merge  Disk: 6472kB
+                     Buffers: shared hit=3936, temp read=1595 written=1601
+                     I/O Timings: temp read=4.403 write=16.838
+                     Worker 0:  Sort Method: external merge  Disk: 3144kB
+                     Worker 1:  Sort Method: external merge  Disk: 3144kB
+                     ->  Parallel Seq Scan on bookings  (cost=0.00..6914.80 rows=247264 width=38) (actual time=0.015..67.698 rows=197811 loops=3)
+                           Buffers: shared hit=3824
+ Planning:
+   Buffers: shared hit=12 read=3
+   I/O Timings: shared read=0.062
+ Planning Time: 0.192 ms
+ Execution Time: 291.145 ms
+(27 строк)
+
+-- В секционированной таблице
+                                                                                      QUERY PLAN
+
+-------------------------------------------------------------------------------------------------------------------------------------------------------
+-------------------------------
+ Finalize GroupAggregate  (cost=12247.93..12301.60 rows=200 width=72) (actual time=163.807..163.878 rows=5 loops=1)
+   Group Key: (EXTRACT(month FROM bookings_partitioned.book_date))
+   Buffers: shared hit=3797
+   ->  Gather Merge  (cost=12247.93..12294.60 rows=400 width=72) (actual time=163.797..163.863 rows=8 loops=1)
+         Workers Planned: 2
+         Workers Launched: 2
+         Buffers: shared hit=3797
+         ->  Sort  (cost=11247.91..11248.41 rows=200 width=72) (actual time=155.478..155.481 rows=3 loops=3)
+               Sort Key: (EXTRACT(month FROM bookings_partitioned.book_date))
+               Sort Method: quicksort  Memory: 25kB
+               Buffers: shared hit=3797
+               Worker 0:  Sort Method: quicksort  Memory: 25kB
+               Worker 1:  Sort Method: quicksort  Memory: 25kB
+               ->  Partial HashAggregate  (cost=11237.27..11240.27 rows=200 width=72) (actual time=155.451..155.457 rows=3 loops=3)
+                     Group Key: (EXTRACT(month FROM bookings_partitioned.book_date))
+                     Batches: 1  Memory Usage: 40kB
+                     Buffers: shared hit=3783
+                     Worker 0:  Batches: 1  Memory Usage: 40kB
+                     Worker 1:  Batches: 1  Memory Usage: 40kB
+                     ->  Parallel Append  (cost=0.00..9382.79 rows=247263 width=38) (actual time=0.015..86.829 rows=197811 loops=3)
+                           Buffers: shared hit=3783
+                           ->  Parallel Seq Scan on bookings_2017_07 bookings_partitioned_4  (cost=0.00..2357.94 rows=101035 width=38) (actual time=0.0
+09..32.037 rows=57253 loops=3)
+                                 Buffers: shared hit=1095
+                           ->  Parallel Seq Scan on bookings_2017_06 bookings_partitioned_3  (cost=0.00..2266.34 rows=97147 width=38) (actual time=0.01
+2..22.852 rows=82575 loops=2)
+                                 Buffers: shared hit=1052
+                           ->  Parallel Seq Scan on bookings_2017_05 bookings_partitioned_2  (cost=0.00..2244.43 rows=96195 width=38) (actual time=0.00
+6..41.072 rows=163531 loops=1)
+                                 Buffers: shared hit=1042
+                           ->  Parallel Seq Scan on bookings_2017_08 bookings_partitioned_5  (cost=0.00..1214.17 rows=52014 width=38) (actual time=0.00
+8..22.481 rows=88423 loops=1)
+                                 Buffers: shared hit=564
+                           ->  Parallel Seq Scan on bookings_2017_04 bookings_partitioned_1  (cost=0.00..63.60 rows=2688 width=38) (actual time=0.013..
+1.214 rows=4569 loops=1)
+                                 Buffers: shared hit=30
+ Planning:
+   Buffers: shared hit=14
+ Planning Time: 0.304 ms
+ Execution Time: 163.948 ms
+(35 строк)
 ```
