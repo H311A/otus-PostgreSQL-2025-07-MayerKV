@@ -112,8 +112,8 @@ CONNECTION 'host=айпишник_первой_вм port=5432 user=repl_user pas
 PUBLICATION pub_test;
 ЗАМЕЧАНИЕ:  на сервере публикации создан слот репликации "sub_test_vm1"
 
-postgres=# CREATE SUBSCRIPTION sub_test2_vm2
-postgres-# CONNECTION 'host=айпишник_второй_вм port=5432 user=repl_user password=12345 dbname=postgres'
-postgres-# PUBLICATION pub_test2;
+CREATE SUBSCRIPTION sub_test2_vm2
+CONNECTION 'host=айпишник_второй_вм port=5432 user=repl_user password=12345 dbname=postgres'
+PUBLICATION pub_test2;
 ЗАМЕЧАНИЕ:  на сервере публикации создан слот репликации "sub_test2_vm2"
 ```
