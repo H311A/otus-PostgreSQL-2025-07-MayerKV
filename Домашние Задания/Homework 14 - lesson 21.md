@@ -165,27 +165,3 @@ SELECT * FROM test2;
   1 | Data from VM2 | 2025-11-27 12:04:51.917679
 (1 строка)
 ```
-
-
-### Задание со звёздочкой.
-Подготавливаю третью ВМ как источник:
-```sql
--- Временно останавливаю подписки
-ALTER SUBSCRIPTION sub_test_vm1 DISABLE;
-ALTER SUBSCRIPTION sub_test2_vm2 DISABLE;
-
--- Настраиваю физическую репликацию
-ALTER SYSTEM SET wal_level = replica;
-ALTER SYSTEM SET max_wal_senders = 10;
-ALTER SYSTEM SET max_replication_slots = 10;
-ALTER SYSTEM SET hot_standby = on;
-```
-Перезагружаю PostgreSQL, создаю пользователя для физической репликации:
-```sql
-CREATE USER physical_repl WITH REPLICATION LOGIN PASSWORD '12345';
-```
-Настраиваю pg_hba.conf, перезагружаю PostgreSQL:
-```sql
-echo "host replication physical_repl 0.0.0.0/0 md5" | sudo tee -a /var/lib/pgsql/17/data/pg_hba.conf
-host replication physical_repl 0.0.0.0/0 md5
-```
