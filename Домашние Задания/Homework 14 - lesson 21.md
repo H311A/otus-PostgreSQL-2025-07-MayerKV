@@ -298,3 +298,8 @@ SELECT
     now() as check_time
 FROM pg_stat_wal_receiver;"
 ```
+
+### Какие были проблемы. 
+1. Ошибка подключения при pg_basebackup:  
+pg_basebackup: error: could not connect to server: no pg_hba.conf entry for host "айпишник"  
+Решается добавлением записи в pg_hba.conf
