@@ -105,3 +105,15 @@ f             | f           | host=не_покажу_айпишник port=5432 
 | any
 (1 строка)
 ```
+На третьей ВМ подписываюсь на первую ВМ и вторую ВМ:
+```sql
+CREATE SUBSCRIPTION sub_test_vm1
+CONNECTION 'host=айпишник_первой_вм port=5432 user=repl_user password=12345 dbname=postgres'
+PUBLICATION pub_test;
+ЗАМЕЧАНИЕ:  на сервере публикации создан слот репликации "sub_test_vm1"
+
+postgres=# CREATE SUBSCRIPTION sub_test2_vm2
+postgres-# CONNECTION 'host=айпишник_второй_вм port=5432 user=repl_user password=12345 dbname=postgres'
+postgres-# PUBLICATION pub_test2;
+ЗАМЕЧАНИЕ:  на сервере публикации создан слот репликации "sub_test2_vm2"
+```
