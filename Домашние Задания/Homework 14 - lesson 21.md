@@ -1,5 +1,5 @@
 ```
-Окружение: 2 ВМ Oracle Linux 8.10, 1 ВМ РЕД ОС 7.3.5.
+Окружение: 2 ВМ Oracle Linux 8.10, 1 ВМ РЕД ОС 7.3.5. PostgreSQL 17.
 ```
 
 # Репликация.
@@ -55,4 +55,53 @@ CREATE PUBLICATION pub_test2 FOR TABLE test2;
 CREATE USER repl_user WITH REPLICATION LOGIN PASSWORD '12345';
 GRANT SELECT ON test, test2 TO repl_user;
 GRANT USAGE ON SCHEMA public TO repl_user;
+```
+
+### Подготовка на третьей ВМ. 
+
+Создаю таблицы:
+```sql
+CREATE TABLE test (id SERIAL PRIMARY KEY, data TEXT, created_at TIMESTAMP DEFAULT NOW());
+CREATE TABLE test2 (id SERIAL PRIMARY KEY, data TEXT, created_at TIMESTAMP DEFAULT NOW());
+```
+
+### Настройка подписок. 
+На второй ВМ подписываюсь на первую ВМ, проверяю подписку:
+```sql
+CREATE SUBSCRIPTION sub_test
+CONNECTION 'host=тут_айпишник_первой_вм port=5432 user=repl_user password=12345 dbname=postgres'
+PUBLICATION pub_test;
+ЗАМЕЧАНИЕ:  на сервере публикации создан слот репликации "sub_test"
+
+SELECT * FROM pg_subscription;
+  oid  | subdbid | subskiplsn | subname  | subowner | subenabled | subbinary | substream | subtwophasestate | subdisableonerr | subpasswordrequired | s
+ubrunasowner | subfailover |                               subconninfo                                | subslotname | subsynccommit | subpublications |
+ suborigin
+-------+---------+------------+----------+----------+------------+-----------+-----------+------------------+-----------------+---------------------+--
+-------------+-------------+--------------------------------------------------------------------------+-------------+---------------+-----------------+
+-----------
+ 16413 |       5 | 0/0        | sub_test |       10 | t          | f         | f         | d                | f               | t                   | f
+             | f           | host=не_покажу_айпишник port=5432 user=repl_user password=12345 dbname=postgres | sub_test    | off           | {pub_test}      |
+ any
+(1 строка)
+```
+На первой ВМ подписываюсь на вторую ВМ, проверяю подписку:
+```sql
+CREATE SUBSCRIPTION sub_test2
+CONNECTION 'host=айпишник_от_второй_вм port=5432 user=repl_user password=12345 dbname=postgres'
+PUBLICATION pub_test2;
+ЗАМЕЧАНИЕ:  на сервере публикации создан слот репликации "sub_test2"
+
+SELECT * FROM pg_subscription;
+
+  oid  | subdbid | subskiplsn |  subname  | subowner | subenabled | subbinary | substream | subtwophasestate | subdisableonerr | subpasswordrequired |
+subrunasowner | subfailover |                               subconninfo                                | subslotname | subsynccommit | subpublications
+| suborigin
+-------+---------+------------+-----------+----------+------------+-----------+-----------+------------------+-----------------+---------------------+-
+--------------+-------------+--------------------------------------------------------------------------+-------------+---------------+-----------------
++-----------
+ 65670 |       5 | 0/0        | sub_test2 |       10 | t          | f         | f         | d                | f               | t                   |
+f             | f           | host=не_покажу_айпишник port=5432 user=repl_user password=12345 dbname=postgres | sub_test2   | off           | {pub_test2}
+| any
+(1 строка)
 ```
